@@ -54,28 +54,6 @@ An automated pipeline that:
 4. **Monitors** all open tickets every 5 minutes against their SLA deadline
 5. **Escalates** automatically — agent → team lead → director — based on how overdue a ticket is
 
-## Architecture
-
-```mermaid
-flowchart TD
-    A[Gmail Inbox<br/>polled every 1 min] --> B[AI Classifier<br/>GPT-4o-mini]
-    B --> C{Structured Output}
-    C --> D[category]
-    C --> E[priority P1-P4]
-    C --> F[sentiment]
-    C --> G[assigned owner]
-    C --> H[SLA deadline]
-    C --> I[Google Sheets<br/>Ticket DB]
-    I --> J[Slack Notification<br/>to Owner]
-
-    K[SLA Monitor<br/>runs every 5 min] --> L{Check open tickets<br/>vs SLA deadline}
-    L -->|On time| K
-    L -->|0-30 min overdue| M[Level 0<br/>Slack reminder to Owner]
-    L -->|30-60 min overdue| N[Level 1<br/>Slack escalation to Team Lead]
-    L -->|60+ min overdue| O[Level 2<br/>Email escalation to Director]
-
-    I -.feeds.-> K
-```
 
 ## Repository Structure
 
@@ -83,8 +61,8 @@ flowchart TD
 .
 ├── README.md
 ├── workflows/
-│   ├── 01_ticket_classification.json     # Gmail → AI classify → Sheets → Slack
-│   └── 02_sla_monitor_escalation.json    # SLA polling + 3-level escalation engine
+│   ├── WF#1 - AI_ticket_routing.json     # Gmail → AI classify → Sheets → Slack
+│   └── WF#2 -  sla_and_escalation.json    # SLA polling + 3-level escalation engine
 ├── docs/
 │   └── sheet_schema.md                   # Google Sheets ticket DB column reference
 └── LICENSE
@@ -94,7 +72,7 @@ flowchart TD
 
 ## Workflows
 
-### 1. `01_ticket_classification.json` — AI Ticket Classification
+### 1. `WF#1 - AI_ticket_routing.json` — AI Ticket Classification
 
 | Step | Node type | Description |
 |---|---|---|
@@ -104,7 +82,7 @@ flowchart TD
 | Store | Google Sheets | Appends row to the centralized ticket database |
 | Notify | Slack | Sends ticket details to the assigned owner's channel/DM |
 
-### 2. `02_sla_monitor_escalation.json` — SLA Monitoring & Escalation
+### 2. `WF#2 -  sla_and_escalation.json` — SLA Monitoring & Escalation
 
 | Step | Node type | Description |
 |---|---|---|

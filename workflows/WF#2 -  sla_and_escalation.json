@@ -1,0 +1,377 @@
+{
+  "name": "WF#2 -  sla_and_escalation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "0494f62b-3a90-40f2-9ea4-a5ca16d728e7",
+      "name": "SLA Watcher (every 5m)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1184,
+        192
+      ],
+      "notes": "Окремий тригер. Раз на 5 хвилин читає Sheets і шукає тікети, де поточний час > sla_deadline і status == open."
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1o_K7vTM26fqb5DFRBkaic4BqlaPEEkCqfyWqCI4IKOM",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Tickets",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1o_K7vTM26fqb5DFRBkaic4BqlaPEEkCqfyWqCI4IKOM/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {}
+      },
+      "id": "cb9d6ea3-41bc-48c2-8858-dd490eab784a",
+      "name": "Read Open Tickets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -960,
+        192
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ItSMJ2w9AqLAUTVz",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Тільки open-тікети — закриті нас не цікавлять."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-sla-breached",
+              "leftValue": "={{ DateTime.fromISO($json.sla_deadline) < $now }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fcf11182-36a3-4fe7-8093-e3305fbbdd56",
+      "name": "SLA Breached?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -736,
+        192
+      ],
+      "notes": "Якщо deadline < now і тікет ще open — breach."
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "minutes_overdue",
+              "stringValue": "=={{  Math.floor(    ($now.toMillis() - DateTime.fromISO($json.sla_deadline).toMillis())    / 60000  )}}"
+            },
+            {
+              "name": "escalation_level",
+              "type": "numberValue",
+              "numberValue": "={{   Number(     (() => {       const overdue = Math.floor(         ($now.toMillis() - DateTime.fromISO($json.sla_deadline).toMillis())         / 60000       );        if (overdue >= 60) return 2;       if (overdue >= 30) return 1;       return 0;     })()   ) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d44d81fb-e363-4483-ad41-1b1b036971b0",
+      "name": "Compute Escalation Level",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        -512,
+        192
+      ],
+      "notes": "Рахуємо рівень ескалації:\n- Level 0: breach 0–30 хв → пінг власнику\n- Level 1: 30–60 хв → пінг тімліду\n- Level 2: 60+ хв → ескалація директору (email)"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "lvl0",
+                    "leftValue": "={{ $json.escalation_level }}",
+                    "rightValue": 0,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Level 0 — Owner"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "lvl1",
+                    "leftValue": "={{ $json.escalation_level }}",
+                    "rightValue": 1,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Level 1 — TL"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "lvl2",
+                    "leftValue": "={{ $json.escalation_level }}",
+                    "rightValue": 2,
+                    "operator": {
+                      "type": "number",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Level 2 — Director"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f4187cf4-1a45-4cfa-8144-79d2b5554c81",
+      "name": "Switch by Level",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -288,
+        176
+      ],
+      "notes": "Розгалуження на 3 виходи: Owner / Team Lead / Director."
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0BC88ME802",
+          "mode": "id"
+        },
+        "text": "=:warning: *Нагадування — SLA прострочено*\n\n*Власнику {{ $json.owner }}:* тікет {{ $json.priority }} прострочено на {{ $json.minutes_overdue }} хв.\n\n*Тема:* {{ $json.subject }}\n*Резюме:* {{ $json.summary }}\n\n<{{ $json.thread_link }}|→ Взяти у роботу>",
+        "otherOptions": {}
+      },
+      "id": "20b15ac5-aefb-4c9e-976c-3469dde7bf08",
+      "name": "Slack: Remind Owner (L0)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        -64,
+        0
+      ],
+      "webhookId": "3341434e-1ff5-4e76-868b-f41cb2cb9f75",
+      "credentials": {
+        "slackApi": {
+          "id": "Q1JXerM8ObmRGGWO",
+          "name": "Slack account"
+        }
+      },
+      "notes": "L0 — м'яке нагадування. Не ескалація, не покарання — просто привернення уваги."
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0BD2GXRX32",
+          "mode": "id"
+        },
+        "text": "=:rotating_light: *Ескалація L1 — Team Lead*\n\n*Тікет {{ $json.priority }} прострочено на {{ $json.minutes_overdue }} хв.* Власник {{ $json.owner }} не зреагував на нагадування.\n\n*Тема:* {{ $json.subject }}\n*Sentiment:* {{ $json.sentiment }}\n*Резюме:* {{ $json.summary }}\n*Reasoning:* {{ $json.reasoning }}\n\n<{{ $json.thread_link }}|→ Допомогти або перепризначити>",
+        "otherOptions": {}
+      },
+      "id": "b9aceffc-5a82-4890-9755-079f2295254e",
+      "name": "Slack: Notify TL (L1)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        -64,
+        192
+      ],
+      "webhookId": "b366f76b-5f0e-4104-be92-e650cb599c06",
+      "credentials": {
+        "slackApi": {
+          "id": "Q1JXerM8ObmRGGWO",
+          "name": "Slack account"
+        }
+      },
+      "notes": "L1 — тімлід отримує контекст і вирішує: допомогти Маші або перепризначити."
+    },
+    {
+      "parameters": {
+        "sendTo": "aleksandr.korostashivets23@gmail.com",
+        "subject": "=[ESCALATION L2] {{ $json.priority }} ticket — {{ $json.subject }}",
+        "message": "=<h2>Ескалація L2 — Director</h2>\n<p>Тікет <strong>{{ $json.priority }}</strong> прострочено на <strong>{{ $json.minutes_overdue }} хв</strong>. Власник {{ $json.owner }} і тімлід не зреагували.</p>\n<h3>Контекст</h3>\n<ul>\n<li><strong>Категорія:</strong> {{ $json.category }}</li>\n<li><strong>Sentiment:</strong> {{ $json.sentiment }}</li>\n<li><strong>Від:</strong> {{ $json.from_email }}</li>\n<li><strong>Створено:</strong> {{ $json.created_at }}</li>\n</ul>\n<h3>Резюме</h3>\n<p>{{ $json.summary }}</p>\n<h3>AI Reasoning</h3>\n<p><em>{{ $json.reasoning }}</em></p>\n<p><a href=\"{{ $json.thread_link }}\">→ Відкрити thread</a></p>",
+        "options": {}
+      },
+      "id": "ed88388e-e147-44e5-a78c-e29d67546c38",
+      "name": "Email: Director (L2)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -64,
+        384
+      ],
+      "webhookId": "9fc01b69-e4cf-48c5-b59f-e5b4470d6237",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "61BBxqpSqGsPZOto",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "L2 — лист директору з повним таймлайном. Не пінг — інформація для управлінського рішення."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "SLA Watcher (every 5m)": {
+      "main": [
+        [
+          {
+            "node": "Read Open Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Open Tickets": {
+      "main": [
+        [
+          {
+            "node": "SLA Breached?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SLA Breached?": {
+      "main": [
+        [
+          {
+            "node": "Compute Escalation Level",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Escalation Level": {
+      "main": [
+        [
+          {
+            "node": "Switch by Level",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch by Level": {
+      "main": [
+        [
+          {
+            "node": "Slack: Remind Owner (L0)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Slack: Notify TL (L1)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Director (L2)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "972acbdd-48d5-435a-8244-e6d8a12489c8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bd4ab89221d7ef8491ff1366da74a7c05685b23922c66917aa4eb97a952e68f4"
+  },
+  "nodeGroups": [],
+  "id": "v4n1mmLvvdqM0Agz",
+  "tags": []
+}
